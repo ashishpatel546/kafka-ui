@@ -3,6 +3,10 @@ export interface KafkaConnectionConfig {
   clientId: string;
 }
 
+export interface KafkaConnection extends KafkaConnectionConfig {
+  topics?: string[];
+}
+
 export interface TopicConfig {
   name: string;
   value: string;
@@ -18,6 +22,11 @@ export interface CreateTopicRequest {
 export interface Topic {
   name: string;
   partitions: TopicPartition[];
+  metrics?: {
+    totalMessages?: number;
+    lag?: number;
+    consumerGroupLags?: ConsumerGroupLag[];
+  };
 }
 
 export interface TopicPartition {
@@ -36,13 +45,16 @@ export interface KafkaMessage {
   headers?: Record<string, string>;
 }
 
+export type ReadingMode = 'latest' | 'earliest' | 'specific';
+
 export interface MessageSearchParams {
   topic: string;
   partition?: number;
   offset?: string;
   limit?: number;
   search?: string;
-  fromBeginning?: boolean;
+  readingMode: ReadingMode;
+  autoRefresh?: boolean;
 }
 
 export interface ConsumerGroup {
@@ -73,4 +85,9 @@ export interface ConsumerGroupOffset {
       offset: string;
     }[];
   }[];
+}
+
+export interface ConsumerGroupLag {
+  groupId: string;
+  lag: number;
 }

@@ -1,5 +1,6 @@
 import { useForm, SubmitHandler } from 'react-hook-form';
-import { MessageSearchParams } from '@/types/kafka';
+import { MessageSearchParams, ReadingMode } from '@/types/kafka';
+import { useEffect } from 'react';
 
 interface MessageSearchFormProps {
   selectedTopic: string;
@@ -14,9 +15,33 @@ export default function MessageSearchForm({
   initialValues,
   onSearch
 }: MessageSearchFormProps) {
-  const { register, handleSubmit, formState: { errors } } = useForm<MessageSearchParams>({
-    defaultValues: initialValues
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<MessageSearchParams>({
+    defaultValues: {
+      ...initialValues,
+      readingMode: initialValues.readingMode || 'latest',
+      autoRefresh: initialValues.autoRefresh || false
+    }
   });
+
+  // Watch the readingMode to conditionally display offset input
+  const readingMode = watch('readingMode');
+  const autoRefresh = watch('autoRefresh');
+
+  // Set up auto-refresh if enabled
+  useEffect(() => {
+    if (!autoRefresh) return;
+    
+    const interval = setInterval(() => {
+      const formValues = watch();
+      onSearch({
+        ...formValues,
+        topic: selectedTopic,
+        limit: Number(formValues.limit) || 100
+      });
+    }, 3000); // Refresh every 3 seconds
+    
+    return () => clearInterval(interval);
+  }, [autoRefresh, onSearch, selectedTopic, watch]);
 
   const onSubmit: SubmitHandler<MessageSearchParams> = (data) => {
     onSearch({
@@ -72,15 +97,43 @@ export default function MessageSearchForm({
           )}
         </div>
         
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Reading Mode
+          </label>
+          <select
+            {...register('readingMode')}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="latest">Latest messages</option>
+            <option value="earliest">From beginning (oldest messages first)</option>
+            <option value="specific">From specific offset</option>
+          </select>
+        </div>
+        
+        {readingMode === 'specific' && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Starting Offset
+            </label>
+            <input
+              {...register('offset')}
+              type="number"
+              placeholder="Enter starting offset"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        )}
+        
         <div className="flex items-end">
           <label className="flex items-center">
             <input
-              {...register('fromBeginning')}
+              {...register('autoRefresh')}
               type="checkbox"
               className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
             />
             <span className="ml-2 text-sm text-gray-700">
-              Read from beginning (oldest messages first)
+              Auto-refresh (live updates)
             </span>
           </label>
         </div>
