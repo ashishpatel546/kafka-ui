@@ -6,8 +6,7 @@ import TopicList from '@/components/topics/TopicList';
 import TopicMessages from '@/components/topics/TopicMessages';
 import ConsumerGroups from '@/components/consumers/ConsumerGroups';
 import Navbar from './Navbar';
-
-type TabType = 'topics' | 'messages' | 'consumers';
+import { TabType } from '@/types/kafka';
 
 export default function KafkaDashboard() {
   const { connection, disconnect } = useKafka();

@@ -1,17 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { KafkaConnectionConfig } from '@/types/kafka';
-
-type TabType = 'home' | 'topics' | 'consumers';
+import { KafkaConnectionConfig, TabType } from '@/types/kafka';
+import { Dispatch, SetStateAction } from 'react';
 
 interface NavbarProps {
   activeTab: TabType;
+  setActiveTab?: Dispatch<SetStateAction<TabType>>;
   disconnect?: () => void;
   connectionInfo?: KafkaConnectionConfig | null;
 }
 
-export default function Navbar({ activeTab, disconnect, connectionInfo }: NavbarProps) {
+export default function Navbar({ activeTab, setActiveTab, disconnect, connectionInfo }: NavbarProps) {
   const handleDisconnect = () => {
     if (disconnect) {
       disconnect();

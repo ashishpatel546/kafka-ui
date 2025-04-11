@@ -3,6 +3,9 @@ export interface KafkaConnectionConfig {
   clientId: string;
 }
 
+// Adding shared TabType definition
+export type TabType = 'home' | 'topics' | 'messages' | 'consumers';
+
 export interface KafkaConnection extends KafkaConnectionConfig {
   topics?: string[];
 }
