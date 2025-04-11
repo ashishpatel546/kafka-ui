@@ -166,8 +166,6 @@ export async function POST(req: Request) {
               partition: Number(partition),
               offset: String(offset),
             });
-
-            console.log(`Seeking to partition ${partition}, offset ${offset}`);
           }
           // If we have highestOffsets, seek to the next message after each highest offset
           else if (highestOffsets && Object.keys(highestOffsets).length > 0) {
@@ -189,9 +187,6 @@ export async function POST(req: Request) {
                   partition: partitionNum,
                   offset: String(nextOffset),
                 });
-                console.log(
-                  `Seeking to next message in partition ${partitionNum}, offset ${nextOffset}`
-                );
               } catch (seekError) {
                 console.warn(
                   `Error seeking to offset in partition ${partitionNum}:`,
@@ -213,7 +208,6 @@ export async function POST(req: Request) {
 
               // Get topic offsets to determine the latest ones
               const topicOffsets = await admin.fetchTopicOffsets(topic);
-              console.log(`Latest offsets for topic ${topic}:`, topicOffsets);
 
               // For each partition, seek to the latest offset minus the limit/partitions
               // to get the most recent messages
@@ -240,9 +234,6 @@ export async function POST(req: Request) {
                     partition: partitionNum,
                     offset: String(startOffset),
                   });
-                  console.log(
-                    `Latest mode: Seeking to partition ${partitionNum}, offset ${startOffset} (to get latest messages)`
-                  );
                 } catch (seekError) {
                   console.warn(
                     `Error seeking to offset in partition ${partitionNum}:`,
@@ -262,18 +253,14 @@ export async function POST(req: Request) {
               await consumer.disconnect();
               resolve();
             } catch (err) {
-              console.error('Error stopping consumer:', err);
               reject(err);
             }
           }, 5000);
         } catch (error) {
-          console.error('Error in consumer run:', error);
           try {
             await consumer.stop();
             await consumer.disconnect();
-          } catch (disconnectError) {
-            console.error('Error disconnecting consumer:', disconnectError);
-          }
+          } catch (disconnectError) {}
           reject(error);
         }
       });
@@ -295,7 +282,6 @@ export async function POST(req: Request) {
       partitions: Array.from(new Set(messages.map((m) => m.partition))),
     });
   } catch (error: any) {
-    console.error('Error fetching Kafka messages:', error);
     return NextResponse.json(
       {
         error: 'Failed to fetch Kafka messages',
@@ -355,8 +341,6 @@ export async function PUT(req: Request) {
         messages: kafkaMessages,
       });
 
-      console.log(`Successfully produced messages to ${topic}:`, result);
-
       return NextResponse.json({
         success: true,
         topic,
@@ -366,7 +350,6 @@ export async function PUT(req: Request) {
       await producer.disconnect();
     }
   } catch (error: any) {
-    console.error('Error producing Kafka messages:', error);
     return NextResponse.json(
       {
         error: 'Failed to produce messages',

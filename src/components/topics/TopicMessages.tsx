@@ -104,14 +104,7 @@ export default function TopicMessages({ selectedTopic, onSelectTopic }: TopicMes
         // Use the first partition we've seen (we'll handle multi-partition below)
         const firstPartition = Number(Object.keys(highestOffsets.current)[0]);
         const firstOffset = highestOffsets.current[firstPartition];
-
-        console.log(`Auto-refresh: Fetching new messages starting from partition ${firstPartition}, offset ${firstOffset}`);
       }
-
-      console.log('Fetching messages with params:', {
-        ...effectiveParams,
-        readingMode: effectiveReadingMode,
-      });
 
       // Fetch messages
       const response = await fetch('/api/kafka/messages', {
@@ -161,7 +154,6 @@ export default function TopicMessages({ selectedTopic, onSelectTopic }: TopicMes
           );
 
           if (newMessages.length > 0) {
-            console.log(`Adding ${newMessages.length} new messages to the list`);
             allMessages.current = [...allMessages.current, ...newMessages];
 
             // Keep only the most recent "limit" messages

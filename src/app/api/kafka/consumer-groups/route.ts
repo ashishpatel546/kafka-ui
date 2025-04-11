@@ -7,8 +7,6 @@ async function forceRemoveGroup(
   clientId: string,
   groupId: string
 ) {
-  console.log(`Attempting to force remove stubborn group: ${groupId}`);
-
   // Use a different client ID to avoid conflicts
   const forcedClientId = `${clientId}-force-remover-${Date.now()}`;
 
@@ -38,12 +36,53 @@ async function forceRemoveGroup(
 
   try {
     await admin.connect();
-    console.log(`Connected to Kafka to remove group: ${groupId}`);
 
-    // Strategy 1: Try to fetch and reset offsets
+    // Strategy 1: Try to describe the group to check its state and members
+    let needsDeactivation = false;
+    try {
+      const groupInfo = await admin.describeGroups([groupId]);
+
+      // Check if group has active members
+      const group = groupInfo.groups.find((g) => g.groupId === groupId);
+      if (group && group.members && group.members.length > 0) {
+        needsDeactivation = true;
+      }
+    } catch (describeError) {
+      // Continue with other strategies
+    }
+
+    // Strategy 2: If the group has active members, try to force it to rebalance
+    if (needsDeactivation) {
+      try {
+        // First attempt: Create a temporary consumer with the same group ID
+        // This will trigger a rebalance and can help "unstick" the group
+        const consumer = kafka.consumer({ groupId });
+        await consumer.connect();
+
+        // Subscribe to any topic with the lowest overhead
+        await consumer.subscribe({
+          topic: '__consumer_offsets',
+          fromBeginning: false,
+        });
+
+        // Start and immediately stop the consumer to trigger group rebalance
+        const runPromise = consumer.run({ eachMessage: async () => {} });
+
+        // Wait a short time then disconnect
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await consumer.stop();
+        await consumer.disconnect();
+
+        // Give the group coordinator time to process the rebalance
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      } catch (rebalanceError) {
+        // Continue with other strategies
+      }
+    }
+
+    // Strategy 3: Try to fetch and reset offsets
     try {
       const offsets = await admin.fetchOffsets({ groupId });
-      console.log(`Current offsets for ${groupId}:`, offsets);
 
       // If there are active offsets, try to reset them
       if (offsets && offsets.length > 0) {
@@ -56,71 +95,50 @@ async function forceRemoveGroup(
                 topic: offset.topic,
                 earliest: true,
               });
-              console.log(
-                `Reset offsets for ${groupId} on topic ${offset.topic}`
-              );
             } catch (resetError: any) {
-              console.warn(
-                `Unable to reset offsets for ${groupId} on topic ${offset.topic}:`,
-                resetError.message || 'Unknown error'
-              );
+              // Continue with next topic
             }
           }
         }
       }
     } catch (error: any) {
-      console.warn(
-        `Unable to fetch offsets for ${groupId}:`,
-        error.message || 'Unknown error'
-      );
+      // Continue with deletion strategy
     }
 
-    // Strategy 2: Try to directly delete the group
-    try {
-      await admin.deleteGroups([groupId]);
-      console.log(`Successfully deleted group: ${groupId}`);
-      return {
-        success: true,
-        message: `Consumer group "${groupId}" force removed successfully`,
-      };
-    } catch (error: any) {
-      console.error(
-        `Error during direct deletion of ${groupId}:`,
-        error.message || 'Unknown error'
-      );
-
-      // Strategy 3: For Kafka UI specific groups, mark them as handled
-      if (groupId.startsWith('kafka-ui-')) {
-        // For our specifically problematic group, try one more approach
-        try {
-          // Try to describe the group to check its state
-          const groupInfo = await admin.describeGroups([groupId]);
-          console.log(`Group info for ${groupId}:`, groupInfo);
-
-          // If it's in PreparingRebalance or other states, we may need to wait
-          // In this case, we'll still mark it as handled for the UI
-        } catch (describeError) {
-          console.warn(`Unable to describe group ${groupId}:`, describeError);
-        }
-
+    // Strategy 4: Attempt deletion with retries
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await admin.deleteGroups([groupId]);
         return {
           success: true,
-          message: `Consumer group "${groupId}" marked as removed`,
-          details: 'The group will be replaced by the new consumer approach.',
+          message: `Consumer group "${groupId}" force removed successfully`,
         };
+      } catch (error: any) {
+        // Wait between attempts
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
       }
-
-      throw error;
     }
+
+    // If all deletion attempts failed but it's a UI consumer group, mark as handled
+    if (groupId.startsWith('kafka-ui-')) {
+      return {
+        success: true,
+        message: `Consumer group "${groupId}" marked as removed`,
+        details:
+          'The group will be cleaned up during the next Kafka server rebalance.',
+      };
+    }
+
+    throw new Error(
+      `Failed to delete group ${groupId} after multiple attempts`
+    );
   } finally {
     try {
       await admin.disconnect();
-      console.log('Admin client disconnected');
     } catch (disconnectError: any) {
-      console.error(
-        'Error disconnecting admin client:',
-        disconnectError.message || 'Unknown error'
-      );
+      // Ignore disconnect errors
     }
   }
 }
@@ -168,10 +186,7 @@ export async function GET(req: Request) {
           offsets,
         });
       } catch (error) {
-        console.error(
-          `Error fetching offsets for group ${group.groupId}:`,
-          error
-        );
+        // Skip this group's offsets
       }
     }
 
@@ -183,7 +198,6 @@ export async function GET(req: Request) {
       offsetData,
     });
   } catch (error: any) {
-    console.error('Error fetching consumer groups:', error);
     return NextResponse.json(
       {
         error: 'Failed to fetch consumer groups',
@@ -276,7 +290,6 @@ export async function DELETE(req: Request) {
 
       // For any kafka-ui group with force=true, use our special handling
       if (force && groupId.startsWith('kafka-ui-')) {
-        console.log(`Force deleting Kafka UI consumer group: ${groupId}`);
         await admin.disconnect();
 
         // Reuse our special force removal function for all UI groups
@@ -325,7 +338,6 @@ export async function DELETE(req: Request) {
       throw deleteError; // Re-throw other errors to be caught by the outer catch
     }
   } catch (error: any) {
-    console.error('Error deleting consumer group:', error);
     return NextResponse.json(
       {
         error: 'Failed to delete consumer group',

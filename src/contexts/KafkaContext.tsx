@@ -108,13 +108,12 @@ export function KafkaProvider({ children }: { children: ReactNode }) {
                 groupId
               })
             });
-            console.log(`Successfully deleted consumer group: ${groupId}`);
           } catch (err) {
-            console.error(`Failed to delete consumer group: ${groupId}`, err);
+            // Error handled silently in production
           }
         }
       } catch (error) {
-        console.error('Error cleaning up consumer groups:', error);
+        // Error handled silently in production
       }
     }
     
